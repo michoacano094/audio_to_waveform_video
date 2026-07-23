@@ -1,0 +1,25 @@
+# Waveform Video Generator - Default Configuration
+# Place this file in your project directory or at ~/.waveform.yaml
+# CLI flags always override these values.
+
+# Video dimensions
+width: 1080
+height: 1920
+fps: 30
+
+# Waveform settings
+bars: 48
+smoothing: 0.3
+
+# Visual style
+theme: default           # default, light, dark
+bar_style: rounded       # rounded, flat, gradient
+fade_duration: 0.5       # seconds (0 to disable)
+bubble_position: center  # center, top, bottom, floating
+
+# Output
+format: mp4              # mp4, webm, gif
+
+# Performance
+# workers: 0             # 0 = auto-detect
+# preview: false
