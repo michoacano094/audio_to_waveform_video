@@ -75,7 +75,7 @@ def generate_video(
             sys.exit(1)
 
         print(f"\n✅ Done! → {output_path}")
-        _warn_if_too_large_for_whatsapp(output_path)
+        _warn_if_too_large_for_whatsapp(output_path, duration)
 
     except KeyboardInterrupt:
         process.kill()
@@ -91,16 +91,19 @@ def generate_video(
         raise e
 
 
-def _warn_if_too_large_for_whatsapp(output_path: str) -> None:
+def _warn_if_too_large_for_whatsapp(output_path: str, duration: float = 0) -> None:
     """
-    Warn if the output exceeds WhatsApp's 16 MB media limit.
+    Warn if the output exceeds WhatsApp's limits for template headers.
 
-    WhatsApp Business API (used by GoHighLevel templates) rejects or fails to
-    deliver video files larger than 16 MB. If we're over, suggest ways to shrink.
+    WhatsApp Business API (used by GoHighLevel templates) constraints:
+    - Max file size: 16 MB
+    - Max duration for template headers: ~60 seconds
+    - Codec: H.264 Baseline + AAC-LC
     """
     from pathlib import Path
 
     WHATSAPP_LIMIT = 16 * 1024 * 1024  # 16 MB
+    WHATSAPP_DURATION_LIMIT = 60  # seconds for template headers
 
     p = Path(output_path)
     if not p.exists():
@@ -108,17 +111,27 @@ def _warn_if_too_large_for_whatsapp(output_path: str) -> None:
 
     size = p.stat().st_size
     size_mb = size / (1024 * 1024)
+    warnings = []
 
     if size > WHATSAPP_LIMIT:
-        print(
-            f"⚠️  {size_mb:.1f} MB — exceeds WhatsApp's 16 MB limit. "
-            "It may fail to load for recipients.\n"
+        warnings.append(
+            f"⚠️  {size_mb:.1f} MB — exceeds WhatsApp's 16 MB limit.\n"
             "   Try: --end to trim length, a lower --fps (e.g. 24), "
-            "or smaller --width/--height.",
-            file=sys.stderr,
+            "or smaller --width/--height."
         )
+
+    if duration > WHATSAPP_DURATION_LIMIT:
+        warnings.append(
+            f"⚠️  Duration {duration:.0f}s — exceeds 60s recommended for "
+            "WhatsApp template headers (GoHighLevel).\n"
+            f"   Try: --end {WHATSAPP_DURATION_LIMIT} to trim to 60s."
+        )
+
+    if warnings:
+        for w in warnings:
+            print(w, file=sys.stderr)
     else:
-        print(f"📦 {size_mb:.1f} MB (within WhatsApp's 16 MB limit)")
+        print(f"📦 {size_mb:.1f} MB | {duration:.0f}s (within WhatsApp template limits)")
 
 
 def _check_ffmpeg() -> None:
@@ -200,11 +213,12 @@ def _build_ffmpeg_command(
 
     cmd += [
         # Video encoding — tuned for WhatsApp / GoHighLevel template compatibility.
-        # WhatsApp requires H.264 + AAC in an MP4, recommends the Baseline profile
+        # WhatsApp requires H.264 + AAC in an MP4, Baseline profile mandatory
         # for broad device support, and needs the moov atom up front for streaming.
         "-c:v", "libx264",
-        "-profile:v", "baseline",   # Max device compatibility (WhatsApp recommendation)
-        "-level", "4.0",
+        "-profile:v", "baseline",   # Max device compatibility (WhatsApp requirement)
+        "-level:v", "3.1",          # 3.1 = safest for mobile devices
+        "-x264-params", "no-cabac=1:bframes=0",  # Force Baseline constraints (no CABAC, no B-frames)
         "-preset", "veryfast",      # Much better compression than ultrafast → smaller files
         "-crf", "23",               # Balanced quality/size to help stay under the 16 MB limit
         "-maxrate", "4M",           # Cap bitrate so files don't blow past 16 MB
